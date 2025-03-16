@@ -95,6 +95,7 @@
                 $_SESSION['id'] = $admin['id'];  
                 $_SESSION['email'] = $admin['email'];
                 $_SESSION['role'] = $admin['role'];
+                
                 header("location:index.php");
                 exit;
             } else {

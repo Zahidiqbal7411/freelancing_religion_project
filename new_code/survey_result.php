@@ -10,8 +10,45 @@ if (!isset($_SESSION['id']) || $_SESSION['id'] == "") {
 $user_id = $_SESSION['id'];
 $email = $_SESSION['email'];
 $admin_role = $_SESSION['role'];
+$msg = '';
+if (isset($_POST['update_survey']) && $_POST['update_survey'] == 'yes') {
+    // Loop through each question and selected option
+    foreach ($_POST['question_id'] as $questionCount => $selected_option_id) {
+        $selected_option_id = intval($selected_option_id); // Sanitize the option_id
+
+        // Prepare SQL to update the survey responses
+        $sql_update = "UPDATE survey_results 
+                SET option_id = ? 
+                WHERE question_id = ? 
+                AND user_id = ?";
+
+        // Prepare statement
+        if ($stmt = $conn->prepare($sql_update)) {
+            // Bind parameters
+            $stmt->bind_param("iii", $selected_option_id, $questionCount, $user_id);
 
 
+
+            // Check if the update was successful
+            if ($stmt->execute()) {
+                $msg =  "<p style='color:green;'>Thank you! Survey updated Successfully!</p>";
+            } else {
+                $msg =  "<p style='color:red;'>Sorry! Error Occur!</p>";
+            }
+
+            // Close the statement
+            $stmt->close();
+        } else {
+            // Handle error in preparing the statement
+            $msg =  "<p style='color:red;'>Error in preparing the query: " . $conn->error ."</p>";
+        }
+    }
+}
+else
+{
+    header('location:index.php');
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -123,6 +160,22 @@ $admin_role = $_SESSION['role'];
 <body>
 
     <?php
+    $allSurveyResults = [];
+    $sqlResults = "SELECT question_id,option_id,count(surver_result_id) as total_answers from survey_results where status = 1 group by question_id,option_id;
+";
+    
+    $resultData = $conn->query($sqlResults);
+    $specific_question = 0;
+    if ($resultData->num_rows > 0) {
+        while ($row = $resultData->fetch_assoc()) {
+            $allSurveyResults[$row['question_id']][$row['option_id']] = $row['total_answers'];
+            if($specific_question == 0) $specific_question = $row['question_id'];
+        }
+    }
+    $total_votes = array_sum($allSurveyResults[$specific_question]);
+
+
+
     $sql = "SELECT name, last_name FROM users WHERE id = ?";
     $stmt_user = $conn->prepare($sql);
     $stmt_user->bind_param("i", $user_id); // Bind the user ID parameter to the query
@@ -194,16 +247,15 @@ $admin_role = $_SESSION['role'];
 
     // Start outputting the HTML
     echo '
-    <form action="survey_result.php" method="post">
     <div class="dashboard-container">
-        <div class="header fw-bold">Question Dashboard</div>';
+        <div class="header fw-bold">'.$msg.'Question Dashboard <br/> Total Votes: '.$total_votes.'</div>';
 
     // Loop through the questions and display them dynamically
     while ($row = $result->fetch_assoc()) {
         $question_id = $row['question_id'];
         echo '<div class="question">
             <p>' . $questionCount . '. ' . htmlspecialchars($row['questions']) . '</p>
-            <div class="options">';
+            <ul class="options">';
 
         // Fetch options for this question
         $optionCount = 1; // To track the number of options dynamically
@@ -211,27 +263,35 @@ $admin_role = $_SESSION['role'];
         foreach ($all_options[$question_id] as $option_id => $option_text) {
             $checked = '';
             if (isset($all_survey_result[$question_id]) && $all_survey_result[$question_id] == $option_id) {
-                $checked = 'checked';
+                $checked = '<b> (Your Answer)</b>';
             }
-            echo '<label class="option-label">
-                <input type="radio" name="question_id[' . $questionCount . ']" value="' . $option_id . '" ' . $checked . '> ' . $option_text . '
-              </label>';
+
+            $percentage = ' (0.00%) ';
+            $this_option_vote = isset($allSurveyResults[$question_id][$option_id]) ? $allSurveyResults[$question_id][$option_id] : 0;
+            if($this_option_vote > 0 && $total_votes > 0) {
+                $percentage = " (".round(($this_option_vote / $total_votes) * 100 , 2)."%) ";
+            }
+
+
+            echo '<li> ' . $option_text . $percentage . $checked . ' </li>';
             $optionCount++;
         }
 
-        echo '  </div>
+        echo '  </ul>
         </div>';
 
         $questionCount++;
     }
 
+    
+
     echo '  <div class="button-container">
-            <button class="submit-button">Update Survey</button>
-            <input type="hidden" name="update_survey" value="yes" />
-        </div>
-      </div>
-      </form>
-      ';
+    <a href="index.php" class="submit-button">Back to Edit form</a>
+</div>
+</div>
+';
+
+
 
     $conn->close();
     ?>
